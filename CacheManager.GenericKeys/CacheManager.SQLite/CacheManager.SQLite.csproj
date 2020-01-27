@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <TargetFrameworks>net452;netstandard2.0</TargetFrameworks>
-    <Version>0.2.0</Version>
+    <Version>0.3.0</Version>
     <PackageReleaseNotes>In development still, critically missing: { expiration, backwards-compatibility, input sanitation }</PackageReleaseNotes>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <LangVersion>8</LangVersion>

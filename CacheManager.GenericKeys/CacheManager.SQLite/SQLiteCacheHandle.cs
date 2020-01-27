@@ -91,7 +91,7 @@ namespace CacheManager.SQLite
         {
             int count = (int)new SQLiteCommand(
                     // TODO: Params for injection
-                    $"SELECT COUNT(*) FROM entries WHERE key={key}", // TODO: Filter out expired
+                    $"SELECT COUNT(*) FROM entries WHERE key = ", // TODO: Filter out expired
                     this.conn)
                 .ExecuteScalar();
             return count > 0;
