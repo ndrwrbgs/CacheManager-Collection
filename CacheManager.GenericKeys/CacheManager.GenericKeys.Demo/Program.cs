@@ -30,10 +30,15 @@ namespace CacheManager.GenericKeys.Demo
         private static void PerformanceProfiling()
         {
             // Create cache
+            SQLiteCacheHandleAdditionalConfiguration.BeginTransaction beginTransaction = null;
             using ICacheManager<int> cacheManager = CacheFactory.Build<int>(
                 settings => settings
                     .WithProtoBufSerializer(new RecyclableMemoryStreamManager()) // TODO: Even the memory stream objects is causing perf problems, since it's in the tight loop', is there a way to pool those too?
-                    .WithSQLiteCacheHandle(new SQLiteCacheHandleAdditionalConfiguration{ DatabaseFilePath = "MyDatabase.sqlite"})
+                    .WithSQLiteCacheHandle(new SQLiteCacheHandleAdditionalConfiguration
+                    {
+                        DatabaseFilePath = "MyDatabase.sqlite",
+                        SaveBeginTransactionMethod = method => beginTransaction = method
+                    })
                     .Build());
             using GenericCache<Guid, int> toStringCache = new GenericCache<Guid, int>(cacheManager);
 
@@ -45,7 +50,7 @@ namespace CacheManager.GenericKeys.Demo
             {
                 // Use a transaction to avoid going to disk for EACH operation
                 // TODO: Better/more ephemeral/auto ways to do this?
-                using (var tr = ((SQLiteCacheHandle<int>) cacheManager.CacheHandles.Single()).BeginTransaction())
+                using (var tr = beginTransaction())
                 {
                     for (int i = 0; i < 28000; i++)
                     {

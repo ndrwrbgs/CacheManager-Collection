@@ -12,9 +12,6 @@ namespace CacheManager.SQLite
     [RequiresSerializer]
     public class SQLiteCacheHandle<TCacheValue> : BaseCacheHandle<TCacheValue>
     {
-        // TODO: Instead of requiring loose typing, we COULD use AdditionalConfiguration to pass a callback to save a func for creating transactions
-        public SQLiteTransaction BeginTransaction() => this.conn.BeginTransaction( /* TODO: Support arguments/overloads */);
-
         private readonly ICacheSerializer serializer;
         private readonly SQLiteCacheHandleAdditionalConfiguration additionalConfiguration;
 
@@ -42,6 +39,9 @@ namespace CacheManager.SQLite
             this.cacheName = configuration.Name;
 
             this.conn = CreateConnection(this.additionalConfiguration.DatabaseFilePath);
+
+            additionalConfiguration?.SaveBeginTransactionMethod?.Invoke(
+                () => this.conn.BeginTransaction( /* TODO: Support arguments/overloads */));
         }
 
         private static SQLiteConnection CreateConnection(string databaseFilePath)
