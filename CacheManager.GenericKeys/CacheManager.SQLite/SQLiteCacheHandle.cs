@@ -18,7 +18,10 @@ namespace CacheManager.SQLite
         private readonly ICacheSerializer serializer;
         private readonly SQLiteCacheHandleAdditionalConfiguration additionalConfiguration;
 
-        // TODO: Support multiple cache names within the same sqlite database?
+        /// <summary>
+        /// From http://cachemanager.michaco.net/documentation/CacheManagerConfiguration
+        /// The cache or cache handle name in general is optional. It can be used for debugging/logging purposes though
+        /// </summary>
         private string cacheName;
 
         private SQLiteConnection conn;
@@ -91,7 +94,7 @@ namespace CacheManager.SQLite
         {
             int count = (int)new SQLiteCommand(
                     // TODO: Params for injection
-                    $"SELECT COUNT(*) FROM entries WHERE key = ", // TODO: Filter out expired
+                    $"SELECT COUNT(*) FROM entries WHERE key = '{key}'", // TODO: Filter out expired
                     this.conn)
                 .ExecuteScalar();
             return count > 0;
