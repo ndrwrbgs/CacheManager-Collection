@@ -2,16 +2,30 @@
 
   <PropertyGroup>
     <TargetFrameworks>net452;netstandard2.0</TargetFrameworks>
-    <Version>0.3.0</Version>
-    <PackageReleaseNotes>In development still, critically missing: { expiration, backwards-compatibility, input sanitation }</PackageReleaseNotes>
+    <Version>0.5.2</Version>
+    <PackageReleaseNotes>0.4.0
+ - SQLParameters to avoid injection, val converted to BLOB
+0.5.0
+ - Implement expiration
+0.5.1
+ - Create the directory if it doesn't exist</PackageReleaseNotes>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <LangVersion>8</LangVersion>
+    <Description>In development still, critically missing: { backwards-compatibility }</Description>
+    <PackageLicenseFile>LICENSE</PackageLicenseFile>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="CacheManager.Core" Version="1.2.0" />
     <PackageReference Include="System.Data.SQLite" Version="1.0.112" />
     <PackageReference Include="System.Data.SQLite.Core" Version="1.0.112" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\..\LICENSE">
+      <Pack>True</Pack>
+      <PackagePath></PackagePath>
+    </None>
   </ItemGroup>
 
 </Project>

@@ -45,12 +45,15 @@ namespace CacheManager.SQLite
             {
                 additionalConfiguration.BeginTransactionMethod = () => this.conn.BeginTransaction( /* TODO: Support arguments/overloads */);
             }
+
+            RemoveExpiredItems();
         }
 
         private static SQLiteConnection CreateConnection(string databaseFilePath)
         {
             if (!File.Exists(databaseFilePath))
             {
+                Directory.CreateDirectory(Path.GetDirectoryName(databaseFilePath));
                 SQLiteConnection.CreateFile(databaseFilePath);
             }
 
@@ -94,10 +97,10 @@ namespace CacheManager.SQLite
         public override bool Exists(string key)
         {
             var sqLiteCommand = new SQLiteCommand(
-                // TODO: Params for injection
-                $"SELECT COUNT(*) FROM entries WHERE key = @key", // TODO: Filter out expired
+                $"SELECT COUNT(*) FROM entries WHERE key = @key AND exp > @exp",
                 this.conn);
             sqLiteCommand.Parameters.AddWithValue("@key", key);
+            sqLiteCommand.Parameters.AddWithValue("@exp", DateTimeOffset.UtcNow.Ticks);
             int count = (int)sqLiteCommand.ExecuteScalar();
             return count > 0;
         }
@@ -122,7 +125,8 @@ namespace CacheManager.SQLite
 
             if (exp <= DateTimeOffset.UtcNow.Ticks)
             {
-                // TODO: Delete the value that is expired?
+                // Delete the value that is expired
+                RemoveExpiredItems();
                 return null;
             }
             else
@@ -141,6 +145,7 @@ namespace CacheManager.SQLite
         protected override bool RemoveInternal(string key)
         {
             var sqLiteCommand = new SQLiteCommand(
+                // TODO: Will say it did delete an item, even if the item was already expired
                 $"DELETE FROM entries WHERE key = @key",
                 this.conn);
             sqLiteCommand.Parameters.AddWithValue("@key", key);
@@ -148,6 +153,15 @@ namespace CacheManager.SQLite
                 .ExecuteNonQuery();
 
             return rowsAffected != 0;
+        }
+
+        private void RemoveExpiredItems()
+        {
+            var sqLiteCommand = new SQLiteCommand(
+                $"DELETE FROM entries WHERE exp < @exp",
+                this.conn);
+            sqLiteCommand.Parameters.AddWithValue("@exp", DateTimeOffset.UtcNow.Ticks);
+            sqLiteCommand.ExecuteNonQuery();
         }
 
         protected override bool RemoveInternal(string key, string region)
@@ -169,13 +183,12 @@ namespace CacheManager.SQLite
                 var serializedValueBytes = this.serializer.Serialize(item.Value);
 
                 var sqLiteCommand = new SQLiteCommand(
-                    // TODO: Implement expiry
                     $"INSERT INTO entries (key, val, exp)"
                     + $" VALUES (@key, @val, @exp)",
                     this.conn);
                 sqLiteCommand.Parameters.AddWithValue("@key", item.Key);
                 sqLiteCommand.Parameters.AddWithValue("@val", serializedValueBytes);
-                sqLiteCommand.Parameters.AddWithValue("@exp", DateTimeOffset.Parse("1/1/2900").ToUniversalTime().Ticks);
+                sqLiteCommand.Parameters.AddWithValue("@exp", WhenShouldIExpire(item));
                 sqLiteCommand
                     .ExecuteNonQuery();
 
@@ -184,18 +197,41 @@ namespace CacheManager.SQLite
             }
         }
 
+        private static long WhenShouldIExpire(CacheItem<TCacheValue> item)
+        {
+            return WhenShouldIExpireImpl(item).ToUniversalTime().Ticks;
+        }
+
+
+        private static DateTimeOffset WhenShouldIExpireImpl(CacheItem<TCacheValue> item)
+        {
+            switch (item.ExpirationMode)
+            {
+                case ExpirationMode.Default: // Documentation on Default says it defaults to None
+                case ExpirationMode.None:
+                    // An obnoxiously large value, since we don't have support for null implemented
+                    return DateTimeOffset.Parse("1/1/9000");
+                case ExpirationMode.Sliding:
+                    // TODO: Not implemented, should be updating the LastAccessed on each read, but we don't do that now. Absolute is our approximation
+                    return DateTimeOffset.UtcNow.Add(item.ExpirationTimeout);
+                case ExpirationMode.Absolute:
+                    return DateTimeOffset.UtcNow.Add(item.ExpirationTimeout);
+                default:
+                    throw new ArgumentOutOfRangeException();
+            }
+        }
+
         protected override void PutInternalPrepared(CacheItem<TCacheValue> item)
         {
             var serializedValueBytes = this.serializer.Serialize(item.Value);
 
             var sqLiteCommand = new SQLiteCommand(
-                // TODO: Implement expiry
                 $"REPLACE INTO entries (key, val, exp)"
                 + $" VALUES (@key, @val, @exp)",
                 this.conn);
             sqLiteCommand.Parameters.AddWithValue("@key", item.Key);
             sqLiteCommand.Parameters.AddWithValue("@val", serializedValueBytes);
-            sqLiteCommand.Parameters.AddWithValue("@exp", DateTimeOffset.Parse("1/1/2900").ToUniversalTime().Ticks);
+            sqLiteCommand.Parameters.AddWithValue("@exp", WhenShouldIExpire(item));
             sqLiteCommand
                 .ExecuteNonQuery();
         }
@@ -204,9 +240,12 @@ namespace CacheManager.SQLite
         {
             get
             {
-                int count = (int) new SQLiteCommand(
-                        "SELECT COUNT(*) FROM entries",
-                        this.conn)
+                var sqLiteCommand = new SQLiteCommand(
+                    // TODO: We should probably occasionally/background clean up items that are expired
+                    "SELECT COUNT(*) FROM entries WHERE exp > @exp",
+                    this.conn);
+                sqLiteCommand.Parameters.AddWithValue("@exp", DateTimeOffset.UtcNow.Ticks);
+                int count = (int) sqLiteCommand
                     .ExecuteScalar();
                 return count;
             }
