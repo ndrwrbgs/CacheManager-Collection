@@ -59,6 +59,8 @@ namespace CacheManager.SQLite
 
             var sqLiteConnection = new SQLiteConnection("Data Source=" + databaseFilePath);
             sqLiteConnection.Open();
+            //new SQLiteCommand("PRAGMA synchronous = OFF", sqLiteConnection).ExecuteNonQuery();
+            //new SQLiteCommand("PRAGMA journal_mode = MEMORY", sqLiteConnection).ExecuteNonQuery();
 
             // Create tables if needed
 
@@ -175,29 +177,19 @@ namespace CacheManager.SQLite
         protected override ILogger Logger { get; }
         protected override bool AddInternalPrepared(CacheItem<TCacheValue> item)
         {
-            // TODO: Can be optimized by doing all SQL side, but this is easier to write for now
-            using (var tr = this.conn.BeginTransaction())
-            {
-                if (this.Exists(item.Key))
-                {
-                    return false;
-                }
+            var serializedValueBytes = this.serializer.Serialize(item.Value);
 
-                var serializedValueBytes = this.serializer.Serialize(item.Value);
+            using var sqLiteCommand = new SQLiteCommand(
+                $"INSERT IGNORE INTO entries (key, val, exp)"
+                + $" VALUES (@key, @val, @exp)",
+                this.conn);
+            sqLiteCommand.Parameters.AddWithValue("@key", item.Key);
+            sqLiteCommand.Parameters.AddWithValue("@val", serializedValueBytes);
+            sqLiteCommand.Parameters.AddWithValue("@exp", WhenShouldIExpire(item));
+            var rowsUpdated = sqLiteCommand
+                .ExecuteNonQuery();
 
-                using var sqLiteCommand = new SQLiteCommand(
-                    $"INSERT INTO entries (key, val, exp)"
-                    + $" VALUES (@key, @val, @exp)",
-                    this.conn);
-                sqLiteCommand.Parameters.AddWithValue("@key", item.Key);
-                sqLiteCommand.Parameters.AddWithValue("@val", serializedValueBytes);
-                sqLiteCommand.Parameters.AddWithValue("@exp", WhenShouldIExpire(item));
-                sqLiteCommand
-                    .ExecuteNonQuery();
-
-                tr.Commit();
-                return true;
-            }
+            return rowsUpdated == 1;
         }
 
         private static long WhenShouldIExpire(CacheItem<TCacheValue> item)
