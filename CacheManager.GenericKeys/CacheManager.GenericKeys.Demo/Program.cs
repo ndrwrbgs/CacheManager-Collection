@@ -16,6 +16,7 @@ namespace CacheManager.GenericKeys.Demo
     using CacheManager.SQLite;
 
     using Microsoft.IO;
+    using System.IO;
 
     class Program
     {
@@ -30,16 +31,19 @@ namespace CacheManager.GenericKeys.Demo
         private static void PerformanceProfiling()
         {
             // Create cache
-            SQLiteCacheHandleAdditionalConfiguration.BeginTransaction beginTransaction = null;
+            var sqliteConfig = new SQLiteCacheHandleAdditionalConfiguration
+            {
+                DatabaseFilePath = "MyDatabase2.sqlite"
+            };
             using ICacheManager<int> cacheManager = CacheFactory.Build<int>(
-                settings => settings
-                    .WithProtoBufSerializer(new RecyclableMemoryStreamManager()) // TODO: Even the memory stream objects is causing perf problems, since it's in the tight loop', is there a way to pool those too?
-                    .WithSQLiteCacheHandle(new SQLiteCacheHandleAdditionalConfiguration
-                    {
-                        DatabaseFilePath = "MyDatabase.sqlite",
-                        SaveBeginTransactionMethod = method => beginTransaction = method
-                    })
-                    .Build());
+                settings =>
+                {
+                    settings
+                        .WithProtoBufSerializer(
+                            new RecyclableMemoryStreamManager()) // TODO: Even the memory stream objects is causing perf problems, since it's in the tight loop', is there a way to pool those too?
+                        .WithSQLiteCacheHandle(sqliteConfig)
+                        .Build();
+                });
             using GenericCache<Guid, int> toStringCache = new GenericCache<Guid, int>(cacheManager);
 
             toStringCache.Clear();
@@ -50,7 +54,7 @@ namespace CacheManager.GenericKeys.Demo
             {
                 // Use a transaction to avoid going to disk for EACH operation
                 // TODO: Better/more ephemeral/auto ways to do this?
-                using (var tr = beginTransaction())
+                using (var tr = sqliteConfig.GetBeginTransactionMethod()())
                 {
                     for (int i = 0; i < 28000; i++)
                     {

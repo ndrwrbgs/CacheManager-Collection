@@ -2,6 +2,7 @@
 namespace CacheManager.SQLite
 {
     using System;
+    using System.Data;
     using System.Data.SQLite;
     using System.IO;
     using System.Threading;
@@ -40,8 +41,10 @@ namespace CacheManager.SQLite
 
             this.conn = CreateConnection(this.additionalConfiguration.DatabaseFilePath);
 
-            additionalConfiguration?.SaveBeginTransactionMethod?.Invoke(
-                () => this.conn.BeginTransaction( /* TODO: Support arguments/overloads */));
+            if (additionalConfiguration != null)
+            {
+                additionalConfiguration.BeginTransactionMethod = () => this.conn.BeginTransaction( /* TODO: Support arguments/overloads */);
+            }
         }
 
         private static SQLiteConnection CreateConnection(string databaseFilePath)
@@ -57,9 +60,7 @@ namespace CacheManager.SQLite
             // Create tables if needed
 
             string create = "CREATE TABLE IF NOT EXISTS entries "
-                            // TODO: BLOB vs TEXT
-                            ////+ "( key TEXT PRIMARY KEY, val BLOB, exp FLOAT )";
-                            + "( key TEXT PRIMARY KEY, val TEXT, exp FLOAT )";
+                            + "( key TEXT PRIMARY KEY, val BLOB, exp FLOAT )";
             string createIndex = "CREATE INDEX IF NOT EXISTS keyname_index ON entries (key)";
 
             new SQLiteCommand(create, sqLiteConnection).ExecuteNonQuery();
@@ -92,11 +93,12 @@ namespace CacheManager.SQLite
 
         public override bool Exists(string key)
         {
-            int count = (int)new SQLiteCommand(
-                    // TODO: Params for injection
-                    $"SELECT COUNT(*) FROM entries WHERE key = '{key}'", // TODO: Filter out expired
-                    this.conn)
-                .ExecuteScalar();
+            var sqLiteCommand = new SQLiteCommand(
+                // TODO: Params for injection
+                $"SELECT COUNT(*) FROM entries WHERE key = @key", // TODO: Filter out expired
+                this.conn);
+            sqLiteCommand.Parameters.AddWithValue("@key", key);
+            int count = (int)sqLiteCommand.ExecuteScalar();
             return count > 0;
         }
 
@@ -107,9 +109,11 @@ namespace CacheManager.SQLite
 
         protected override CacheItem<TCacheValue> GetCacheItemInternal(string key)
         {
-            using var sqLiteDataReader = new SQLiteCommand(
-                    $"SELECT val, exp FROM entries WHERE key = '{key}'",
-                    this.conn)
+            var sqLiteCommand = new SQLiteCommand(
+                $"SELECT val, exp FROM entries WHERE key = @key",
+                this.conn);
+            sqLiteCommand.Parameters.AddWithValue("@key", key);
+            using var sqLiteDataReader = sqLiteCommand
                 .ExecuteReader();
 
             if (!sqLiteDataReader.Read()) return null;
@@ -123,8 +127,7 @@ namespace CacheManager.SQLite
             }
             else
             {
-                var valBase64 = sqLiteDataReader.GetFieldValue<string>(0);
-                var valByteArray = Convert.FromBase64String(valBase64);
+                var valByteArray = sqLiteDataReader.GetFieldValue<byte[]>(0);
                 var val = (TCacheValue) this.serializer.Deserialize(valByteArray, typeof(TCacheValue));
                 return new CacheItem<TCacheValue>(key, val, ExpirationMode.Absolute, TimeSpan.FromDays(365));
             }
@@ -137,9 +140,11 @@ namespace CacheManager.SQLite
 
         protected override bool RemoveInternal(string key)
         {
-            int rowsAffected = new SQLiteCommand(
-                    $"DELETE FROM entries WHERE key = '{key}'",
-                    this.conn)
+            var sqLiteCommand = new SQLiteCommand(
+                $"DELETE FROM entries WHERE key = @key",
+                this.conn);
+            sqLiteCommand.Parameters.AddWithValue("@key", key);
+            int rowsAffected = sqLiteCommand
                 .ExecuteNonQuery();
 
             return rowsAffected != 0;
@@ -162,14 +167,16 @@ namespace CacheManager.SQLite
                 }
 
                 var serializedValueBytes = this.serializer.Serialize(item.Value);
-                // TODO: Convert the SQL column back to byte array
-                var serializedValueString = Convert.ToBase64String(serializedValueBytes);
 
-                new SQLiteCommand(
-                        // TODO: Implement expiry
-                        $"INSERT INTO entries (key, val, exp)"
-                        + $" VALUES ('{item.Key}', '{serializedValueString}', '{DateTimeOffset.Parse("1/1/2900").ToUniversalTime().Ticks}')",
-                        this.conn)
+                var sqLiteCommand = new SQLiteCommand(
+                    // TODO: Implement expiry
+                    $"INSERT INTO entries (key, val, exp)"
+                    + $" VALUES (@key, @val, @exp)",
+                    this.conn);
+                sqLiteCommand.Parameters.AddWithValue("@key", item.Key);
+                sqLiteCommand.Parameters.AddWithValue("@val", serializedValueBytes);
+                sqLiteCommand.Parameters.AddWithValue("@exp", DateTimeOffset.Parse("1/1/2900").ToUniversalTime().Ticks);
+                sqLiteCommand
                     .ExecuteNonQuery();
 
                 tr.Commit();
@@ -180,14 +187,16 @@ namespace CacheManager.SQLite
         protected override void PutInternalPrepared(CacheItem<TCacheValue> item)
         {
             var serializedValueBytes = this.serializer.Serialize(item.Value);
-            // TODO: Convert the SQL column back to byte array
-            var serializedValueString = Convert.ToBase64String(serializedValueBytes);
 
-            new SQLiteCommand(
-                    // TODO: Implement expiry
-                    $"REPLACE INTO entries (key, val, exp)"
-                    + $" VALUES ('{item.Key}', '{serializedValueString}', '{DateTimeOffset.Parse("1/1/2900").ToUniversalTime().Ticks}')",
-                    this.conn)
+            var sqLiteCommand = new SQLiteCommand(
+                // TODO: Implement expiry
+                $"REPLACE INTO entries (key, val, exp)"
+                + $" VALUES (@key, @val, @exp)",
+                this.conn);
+            sqLiteCommand.Parameters.AddWithValue("@key", item.Key);
+            sqLiteCommand.Parameters.AddWithValue("@val", serializedValueBytes);
+            sqLiteCommand.Parameters.AddWithValue("@exp", DateTimeOffset.Parse("1/1/2900").ToUniversalTime().Ticks);
+            sqLiteCommand
                 .ExecuteNonQuery();
         }
 
