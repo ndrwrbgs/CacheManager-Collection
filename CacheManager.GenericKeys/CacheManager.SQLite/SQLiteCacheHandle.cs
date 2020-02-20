@@ -66,8 +66,10 @@ namespace CacheManager.SQLite
                             + "( key TEXT PRIMARY KEY, val BLOB, exp FLOAT )";
             string createIndex = "CREATE INDEX IF NOT EXISTS keyname_index ON entries (key)";
 
-            new SQLiteCommand(create, sqLiteConnection).ExecuteNonQuery();
-            new SQLiteCommand(createIndex, sqLiteConnection).ExecuteNonQuery();
+            using var c1 = new SQLiteCommand(create, sqLiteConnection);
+            c1.ExecuteNonQuery();
+            using var c2 = new SQLiteCommand(createIndex, sqLiteConnection);
+            c2.ExecuteNonQuery();
 
             return sqLiteConnection;
         }
@@ -86,7 +88,8 @@ namespace CacheManager.SQLite
 
         public override void Clear()
         {
-            new SQLiteCommand("DELETE FROM entries", this.conn).ExecuteNonQuery();
+            using var c = new SQLiteCommand("DELETE FROM entries", this.conn);
+            c.ExecuteNonQuery();
         }
 
         public override void ClearRegion(string region)
@@ -96,12 +99,12 @@ namespace CacheManager.SQLite
 
         public override bool Exists(string key)
         {
-            var sqLiteCommand = new SQLiteCommand(
+            using var sqLiteCommand = new SQLiteCommand(
                 $"SELECT COUNT(*) FROM entries WHERE key = @key AND exp > @exp",
                 this.conn);
             sqLiteCommand.Parameters.AddWithValue("@key", key);
             sqLiteCommand.Parameters.AddWithValue("@exp", DateTimeOffset.UtcNow.Ticks);
-            int count = (int)sqLiteCommand.ExecuteScalar();
+            long count = (long)sqLiteCommand.ExecuteScalar();
             return count > 0;
         }
 
@@ -112,7 +115,7 @@ namespace CacheManager.SQLite
 
         protected override CacheItem<TCacheValue> GetCacheItemInternal(string key)
         {
-            var sqLiteCommand = new SQLiteCommand(
+            using var sqLiteCommand = new SQLiteCommand(
                 $"SELECT val, exp FROM entries WHERE key = @key",
                 this.conn);
             sqLiteCommand.Parameters.AddWithValue("@key", key);
@@ -144,7 +147,7 @@ namespace CacheManager.SQLite
 
         protected override bool RemoveInternal(string key)
         {
-            var sqLiteCommand = new SQLiteCommand(
+            using var sqLiteCommand = new SQLiteCommand(
                 // TODO: Will say it did delete an item, even if the item was already expired
                 $"DELETE FROM entries WHERE key = @key",
                 this.conn);
@@ -157,7 +160,7 @@ namespace CacheManager.SQLite
 
         private void RemoveExpiredItems()
         {
-            var sqLiteCommand = new SQLiteCommand(
+            using var sqLiteCommand = new SQLiteCommand(
                 $"DELETE FROM entries WHERE exp < @exp",
                 this.conn);
             sqLiteCommand.Parameters.AddWithValue("@exp", DateTimeOffset.UtcNow.Ticks);
@@ -182,7 +185,7 @@ namespace CacheManager.SQLite
 
                 var serializedValueBytes = this.serializer.Serialize(item.Value);
 
-                var sqLiteCommand = new SQLiteCommand(
+                using var sqLiteCommand = new SQLiteCommand(
                     $"INSERT INTO entries (key, val, exp)"
                     + $" VALUES (@key, @val, @exp)",
                     this.conn);
@@ -225,7 +228,7 @@ namespace CacheManager.SQLite
         {
             var serializedValueBytes = this.serializer.Serialize(item.Value);
 
-            var sqLiteCommand = new SQLiteCommand(
+            using var sqLiteCommand = new SQLiteCommand(
                 $"REPLACE INTO entries (key, val, exp)"
                 + $" VALUES (@key, @val, @exp)",
                 this.conn);
@@ -240,14 +243,14 @@ namespace CacheManager.SQLite
         {
             get
             {
-                var sqLiteCommand = new SQLiteCommand(
+                using var sqLiteCommand = new SQLiteCommand(
                     // TODO: We should probably occasionally/background clean up items that are expired
                     "SELECT COUNT(*) FROM entries WHERE exp > @exp",
                     this.conn);
                 sqLiteCommand.Parameters.AddWithValue("@exp", DateTimeOffset.UtcNow.Ticks);
-                int count = (int) sqLiteCommand
+                long count = (long) sqLiteCommand
                     .ExecuteScalar();
-                return count;
+                return (int)count;
             }
         }
     }

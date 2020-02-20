@@ -2,13 +2,17 @@
 
   <PropertyGroup>
     <TargetFrameworks>net452;netstandard2.0</TargetFrameworks>
-    <Version>0.5.2</Version>
+    <Version>0.7.0</Version>
     <PackageReleaseNotes>0.4.0
  - SQLParameters to avoid injection, val converted to BLOB
 0.5.0
  - Implement expiration
 0.5.1
- - Create the directory if it doesn't exist</PackageReleaseNotes>
+ - Create the directory if it doesn't exist
+0.6.0
+ - Correct read of int to long
+0.7.0
+ - Ensure full disposal of objects for https://stackoverflow.com/questions/12532729/sqlite-keeps-the-database-locked-even-after-the-connection-is-closed</PackageReleaseNotes>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <LangVersion>8</LangVersion>
     <Description>In development still, critically missing: { backwards-compatibility }</Description>
