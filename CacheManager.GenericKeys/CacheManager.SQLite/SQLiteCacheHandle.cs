@@ -2,9 +2,15 @@
 namespace CacheManager.SQLite
 {
     using System;
+    using System.Collections;
+    using System.Collections.Concurrent;
+    using System.Collections.Generic;
     using System.Data;
     using System.Data.SQLite;
     using System.IO;
+    using System.Linq;
+    using System.Reflection;
+    using System.Runtime.CompilerServices;
     using System.Threading;
     using CacheManager.Core;
     using CacheManager.Core.Internal;
@@ -46,7 +52,66 @@ namespace CacheManager.SQLite
                 additionalConfiguration.BeginTransactionMethod = () => this.conn.BeginTransaction( /* TODO: Support arguments/overloads */);
             }
 
+            this.SetInitialItemCount();
+
             RemoveExpiredItems();
+        }
+
+        private void SetInitialItemCount()
+        {
+            try
+            {
+                var isStatsEnabledField = this.Stats.GetType().GetField("_isStatsEnabled", BindingFlags.Instance | BindingFlags.NonPublic);
+                var isStatsEnabled = isStatsEnabledField.GetValue(this.Stats);
+                if (!(bool) isStatsEnabled)
+                {
+                    return;
+                }
+
+                // TODO: We don't want this invalid value added to the stats, but it's easier than trying to create a new CacheStatsCounter when default hasn't been added yet
+                this.Stats.OnHit();
+
+                var cacheStats_TCacheValue = this.Stats.GetType();
+                var countersField = cacheStats_TCacheValue.GetField("_counters", BindingFlags.NonPublic | BindingFlags.Instance);
+                var counters = /* ConcurrentDictionary<string, CacheStatsCounter> */ countersField.GetValue(this.Stats);
+                var cacheStatsCounter = counters.GetType().GenericTypeArguments.ElementAt(1);
+                var dictionary = typeof(IDictionary<,>).MakeGenericType(typeof(string), cacheStatsCounter);
+                var dictionaryIndexer = dictionary
+                    .GetProperties()
+                    .Single(p => p.GetIndexParameters().Any());
+                var nullRegionKey = GetNullRegionKey();
+                var cacheStatsCounterValue = /* CacheStatsCounter */ dictionaryIndexer.GetValue(counters, new object[] {nullRegionKey});
+
+                var setMethod = cacheStatsCounter.GetMethod("Set");
+                int initialCount = GetInitialCount();
+                setMethod.Invoke(cacheStatsCounterValue, new object[] {CacheStatsCounterType.Items, initialCount});
+            }
+            catch(Exception e)
+            {
+                // We are being very lazy with our reflection handling, and swallowing exceptions. Don't do this. We don't want to do this.
+                // this is terrible. This will surely break in a week or so. But I want to check this into master and this is the only way 
+                // to do so with the time I have this morning for this!
+                this.Logger.LogError(
+                    "REFL",
+                    e,
+                    $"Our evil terrible reflection logic threw an exception. Please open an issue here: https://github.com/ndrwrbgs/CacheManager-Collection/issues/new");
+            }
+
+            string GetNullRegionKey()
+            {
+                var nullRegionKeyField = typeof(CacheStats<TCacheValue>).GetField("_nullRegionKey", BindingFlags.NonPublic | BindingFlags.Static);
+                return (string) nullRegionKeyField.GetValue(null);
+            }
+
+            int GetInitialCount()
+            {
+                using var sqLiteCommand = new SQLiteCommand(
+                    $"SELECT COUNT(*) FROM entries WHERE exp > @exp",
+                    this.conn);
+                sqLiteCommand.Parameters.AddWithValue("@exp", DateTimeOffset.UtcNow.Ticks);
+                long count = (long)sqLiteCommand.ExecuteScalar();
+                return (int)count;
+            }
         }
 
         private static SQLiteConnection CreateConnection(string databaseFilePath)
@@ -180,7 +245,7 @@ namespace CacheManager.SQLite
             var serializedValueBytes = this.serializer.Serialize(item.Value);
 
             using var sqLiteCommand = new SQLiteCommand(
-                $"INSERT IGNORE INTO entries (key, val, exp)"
+                $"INSERT OR IGNORE INTO entries (key, val, exp)"
                 + $" VALUES (@key, @val, @exp)",
                 this.conn);
             sqLiteCommand.Parameters.AddWithValue("@key", item.Key);

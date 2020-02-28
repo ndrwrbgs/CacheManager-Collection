@@ -17,6 +17,8 @@ namespace CacheManager.GenericKeys.Demo
 
     using Microsoft.IO;
     using System.IO;
+    using System.Threading;
+    using System.Threading.Tasks;
 
     class Program
     {
@@ -42,7 +44,32 @@ namespace CacheManager.GenericKeys.Demo
                         .WithProtoBufSerializer(
                             new RecyclableMemoryStreamManager()) // TODO: Even the memory stream objects is causing perf problems, since it's in the tight loop', is there a way to pool those too?
                         .WithSQLiteCacheHandle(sqliteConfig)
+                        .EnableStatistics()
                         .Build();
+                });
+            using CancellationTokenSource cts = new CancellationTokenSource();
+            Task.Run(
+                async () =>
+                {
+                    while (!cts.Token.IsCancellationRequested)
+                    {
+                        await Task.Delay(100);
+
+                        var stats = cacheManager.CacheHandles.First().Stats;
+                        Console.WriteLine(
+                            string.Format(
+                                "Items: {0}, Hits: {1}, Miss: {2}, Remove: {3}, ClearRegion: {4}, Clear: {5}, Adds: {6}, Puts: {7}, Gets: {8}",
+                                stats.GetStatistic(CacheStatsCounterType.Items),
+                                stats.GetStatistic(CacheStatsCounterType.Hits),
+                                stats.GetStatistic(CacheStatsCounterType.Misses),
+                                stats.GetStatistic(CacheStatsCounterType.RemoveCalls),
+                                stats.GetStatistic(CacheStatsCounterType.ClearRegionCalls),
+                                stats.GetStatistic(CacheStatsCounterType.ClearCalls),
+                                stats.GetStatistic(CacheStatsCounterType.AddCalls),
+                                stats.GetStatistic(CacheStatsCounterType.PutCalls),
+                                stats.GetStatistic(CacheStatsCounterType.GetCalls)
+                            ));
+                    }
                 });
             using GenericCache<Guid, int> toStringCache = new GenericCache<Guid, int>(cacheManager);
 
