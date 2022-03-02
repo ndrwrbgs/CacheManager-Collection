@@ -201,12 +201,17 @@ namespace CacheManager.GenericKeys
                     {LastAccessedUtc = item.LastAccessedUtc};
         }
 
-        [NotNull]
+        [CanBeNull]
         private CacheItem<(TCacheKey key, TCacheValue value)> ConvertCacheItem(
-            [NotNull] CacheItem<TCacheValue> item,
+            [CanBeNull] CacheItem<TCacheValue> item,
             // Performance optimization in the case item was looked up by key, so we don't need to serialize again
             TCacheKey keyIfAlreadyKnown = default)
         {
+            if (item == null)
+            {
+                return null;
+            }
+
             TCacheKey genericKey = ReferenceEquals(keyIfAlreadyKnown, default)
                 ? this.StringToKey(item.Key)
                 : keyIfAlreadyKnown;
@@ -308,7 +313,7 @@ namespace CacheManager.GenericKeys
         /// <param name="key">The key being used to identify the item within the cache.</param>
         /// <returns>The <c>CacheItem</c>.</returns>
         /// <exception cref="T:System.ArgumentNullException">If the <paramref name="key" /> is null.</exception>
-        [NotNull]
+        [CanBeNull]
         public CacheItem<(TCacheKey key, TCacheValue value)> GetCacheItem(TCacheKey key)
         {
             string keyToString = this.KeyToString(key);
@@ -326,7 +331,7 @@ namespace CacheManager.GenericKeys
         /// <exception cref="T:System.ArgumentNullException">
         /// If the <paramref name="key" /> or <paramref name="region" /> is null.
         /// </exception>
-        [NotNull]
+        [CanBeNull]
         public CacheItem<(TCacheKey key, TCacheValue value)> GetCacheItem(TCacheKey key, string region) =>
             this.ConvertCacheItem(this.cache.GetCacheItem(this.KeyToString(key), region));
 
